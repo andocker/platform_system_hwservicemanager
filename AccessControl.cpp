@@ -18,6 +18,7 @@ struct audit_data {
 using android::FQName;
 
 AccessControl::AccessControl() {
+#if !defined(DISABLE_SELINUX)
     mSeHandle = selinux_android_hw_service_context_handle();
     LOG_ALWAYS_FATAL_IF(mSeHandle == NULL, "Failed to acquire SELinux handle.");
 
@@ -32,6 +33,7 @@ AccessControl::AccessControl() {
 
     mSeCallbacks.func_log = selinux_log_callback; /* defined in libselinux */
     selinux_set_callback(SELINUX_CB_LOG, mSeCallbacks);
+#endif
 }
 
 bool AccessControl::canAdd(const std::string& fqName, pid_t pid) {
@@ -57,11 +59,16 @@ bool AccessControl::canGet(const std::string& fqName, pid_t pid) {
 }
 
 bool AccessControl::canList(pid_t pid) {
+#if !defined(DISABLE_SELINUX)
     return checkPermission(pid, mSeContext, kPermissionList, nullptr);
+#else
+    return checkPermission(pid, NULL, kPermissionList, nullptr);
+#endif
 }
 
 bool AccessControl::checkPermission(pid_t sourcePid, const char *targetContext,
                                     const char *perm, const char *interface) {
+#if !defined(DISABLE_SELINUX)
     char *sourceContext = NULL;
     bool allowed = false;
     struct audit_data ad;
@@ -80,25 +87,38 @@ bool AccessControl::checkPermission(pid_t sourcePid, const char *targetContext,
     freecon(sourceContext);
 
     return allowed;
+#else
+    (void) sourcePid;
+    (void) targetContext;
+    (void) perm;
+    (void) interface;
+
+    return true;
+#endif
 }
 
 bool AccessControl::checkPermission(pid_t sourcePid, const char *perm, const char *interface) {
     char *targetContext = NULL;
     bool allowed = false;
 
+#if !defined(DISABLE_SELINUX)
     // Lookup service in hwservice_contexts
     if (selabel_lookup(mSeHandle, &targetContext, interface, 0) != 0) {
         ALOGE("No match for interface %s in hwservice_contexts", interface);
         return false;
     }
+#endif
 
     allowed = checkPermission(sourcePid, targetContext, perm, interface);
 
+#if !defined(DISABLE_SELINUX)
     freecon(targetContext);
+#endif
 
     return allowed;
 }
 
+#if !defined(DISABLE_SELINUX)
 int AccessControl::auditCallback(void *data, security_class_t /*cls*/, char *buf, size_t len) {
     struct audit_data *ad = (struct audit_data *)data;
 
@@ -110,5 +130,6 @@ int AccessControl::auditCallback(void *data, security_class_t /*cls*/, char *buf
     snprintf(buf, len, "interface=%s pid=%d", ad->interfaceName, ad->pid);
     return 0;
 }
+#endif
 
 } // namespace android

@@ -48,5 +48,8 @@ cc_binary {
         binder32bit: {
             cflags: ["-DBINDER_IPC_32BIT=1"],
         },
+        deviceIsContainer: {
+            cflags: ["-DDISABLE_SELINUX"],
+        },
     },
 }
